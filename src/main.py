@@ -1,6 +1,13 @@
 from data_utils import read_text, tokenize, build_vocab, encode_tokens, generate_skipgram_pairs
-from model import initialize_embeddings, sample_negative_words, compute_score, sigmoid, compute_loss
-
+from model import (
+    initialize_embeddings,
+    sample_negative_words,
+    compute_score,
+    sigmoid,
+    compute_loss,
+    train_one_step,
+    train_epochs,
+)
 
 def main() -> None:
     """Run a small skip-gram word2vec demo with negative sampling."""
@@ -54,6 +61,47 @@ def main() -> None:
     loss = compute_loss(positive_score, negative_scores)
     print("Loss:", loss)
 
+    updated_loss = train_one_step(
+        center_id=center_id,
+        context_id=context_id,
+        negative_ids=negative_ids,
+        input_embeddings=input_embeddings,
+        output_embeddings=output_embeddings,
+        learning_rate=0.05,
+    )
 
+    print("Loss before update:", loss)
+
+    center_vector_after = input_embeddings[center_id]
+    positive_vector_after = output_embeddings[context_id]
+    negative_scores_after: list[float] = []
+
+    positive_score_after = compute_score(center_vector_after, positive_vector_after)
+    positive_probability_after = sigmoid(positive_score_after)
+
+    for negative_id in negative_ids:
+        negative_vector_after = output_embeddings[negative_id]
+        negative_score_after = compute_score(center_vector_after, negative_vector_after)
+        negative_scores_after.append(negative_score_after)
+
+    loss_after = compute_loss(positive_score_after, negative_scores_after)
+
+    print("Loss returned by training step:", updated_loss)
+    print("Loss after update:", loss_after)
+
+    epoch_losses = train_epochs(
+        pairs=pairs,
+        input_embeddings=input_embeddings,
+        output_embeddings=output_embeddings,
+        vocab_size=vocab_size,
+        num_negative=3,
+        learning_rate=0.05,
+        epochs=5,
+    )
+
+    print("Epoch losses:")
+    for epoch_index, epoch_loss in enumerate(epoch_losses, start=1):
+        print(f"Epoch {epoch_index}: {epoch_loss:.6f}")
+        
 if __name__ == "__main__":
     main()

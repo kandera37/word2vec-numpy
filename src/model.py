@@ -39,3 +39,70 @@ def compute_loss(positive_score: float, negative_scores: list[float]) -> float:
         negative_loss += -np.log(sigmoid(-score) + 1e-10)
 
     return float(positive_loss + negative_loss)
+
+
+def train_one_step(
+    center_id: int,
+    context_id: int,
+    negative_ids: list[int],
+    input_embeddings: np.ndarray,
+    output_embeddings: np.ndarray,
+    learning_rate: float = 0.05,
+) -> float:
+    """Perform one skip-gram training step with negative sampling."""
+    center_vector = input_embeddings[center_id].copy()
+    positive_vector = output_embeddings[context_id].copy()
+    negative_vectors = output_embeddings[negative_ids].copy()
+
+    positive_score = compute_score(center_vector, positive_vector)
+    negative_scores = [compute_score(center_vector, neg_vector) for neg_vector in negative_vectors]
+
+    loss = compute_loss(positive_score, negative_scores)
+
+    positive_grad = sigmoid(positive_score) - 1.0
+    negative_grads = [sigmoid(score) for score in negative_scores]
+
+    center_grad = positive_grad * positive_vector
+    for neg_grad, neg_vector in zip(negative_grads, negative_vectors):
+        center_grad += neg_grad * neg_vector
+
+    input_embeddings[center_id] -= learning_rate * center_grad
+    output_embeddings[context_id] -= learning_rate * (positive_grad * center_vector)
+
+    for i, negative_id in enumerate(negative_ids):
+        output_embeddings[negative_id] -= learning_rate * (negative_grads[i] * center_vector)
+
+    return loss
+
+
+def train_epochs(
+    pairs: list[tuple[int, int]],
+    input_embeddings: np.ndarray,
+    output_embeddings: np.ndarray,
+    vocab_size: int,
+    num_negative: int = 3,
+    learning_rate: float = 0.05,
+    epochs: int = 5,
+) -> list[float]:
+    """Train skip-gram embeddings for several epochs and return average loss per epoch."""
+    epoch_losses: list[float] = []
+
+    for epoch in range(epochs):
+        total_loss = 0.0
+
+        for center_id, context_id in pairs:
+            negative_ids = sample_negative_words(vocab_size, context_id, num_negative)
+            loss = train_one_step(
+                center_id=center_id,
+                context_id=context_id,
+                negative_ids=negative_ids,
+                input_embeddings=input_embeddings,
+                output_embeddings=output_embeddings,
+                learning_rate=learning_rate,
+            )
+            total_loss += loss
+
+        average_loss = total_loss / len(pairs)
+        epoch_losses.append(float(average_loss))
+
+    return epoch_losses
